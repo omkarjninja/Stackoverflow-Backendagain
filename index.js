@@ -54,7 +54,24 @@ const DATABASE_URL = process.env.CONNECTION_URL;
 mongoose
   .connect(DATABASE_URL, { useNewUrlParser: true, useUnifiedTopology: true })
   .then(async () => {
-    await User.updateMany({}, { $set: { plan: 'FREE', noOfQuestions: 0 } });
+    // Update users who don't have a plan set or have an invalid plan value
+    await User.updateMany(
+      { $or: [{ plan: { $exists: false } }, { plan: { $nin: ['FREE', 'SILVER', 'GOLD'] } }] },
+      { $set: { plan: 'FREE', noOfQuestions: 0 } }
+    );
+
+    // Update users with 'SILVER' plan
+    await User.updateMany(
+      { plan: 'SILVER' },
+      { $set: { noOfQuestions: 0 } }
+    );
+
+    // Update users with 'GOLD' plan
+    await User.updateMany(
+      { plan: 'GOLD' },
+      { $set: { noOfQuestions: Infinity } }
+    );
+
     app.listen(PORT, () => console.log(`server running on port ${PORT}`));
   })
   .catch((err) => console.log(err.message));
@@ -75,11 +92,11 @@ mongoose
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-  const uploadDir = path.join(__dirname, 'uploads');
-const imageUploadDir = path.join(uploadDir, 'image');
-const videoUploadDir = path.join(uploadDir, 'video');
-const audioUploadDir = path.join(uploadDir, 'audio');
-const pdfUploadDir = path.join(uploadDir, 'pdf');
+  const uploadDir = path.resolve('uploads');
+  const imageUploadDir = path.resolve(uploadDir, 'images');
+  const videoUploadDir = path.resolve(uploadDir, 'videos');
+  const audioUploadDir = path.resolve(uploadDir, 'audios');
+  const pdfUploadDir = path.resolve(uploadDir, 'pdfs');
 
 // Create the uploads directory if it doesn't exist
 if (!fs.existsSync(uploadDir)) {
@@ -110,7 +127,23 @@ if (!fs.existsSync(pdfUploadDir)) {
   // Set up Multer for file uploads
   const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-      const uploadPath = path.join(__dirname, 'uploads', file.fieldname);
+      let uploadPath;
+      switch (file.fieldname) {
+        case 'image':
+          uploadPath = path.join(__dirname, 'uploads', 'images');
+          break;
+        case 'video':
+          uploadPath = path.join(__dirname, 'uploads', 'videos');
+          break;
+        case 'audio':
+          uploadPath = path.join(__dirname, 'uploads', 'audios');
+          break;
+        case 'pdf':
+          uploadPath = path.join(__dirname, 'uploads', 'pdfs');
+          break;
+        default:
+          break;
+      }
       cb(null, uploadPath);
     },
     filename: (req, file, cb) => {
@@ -129,13 +162,12 @@ app.use('/uploads/audios', express.static(audioUploadDir));
 app.use('/uploads/pdfs', express.static(pdfUploadDir));
   
   // Share content
-  app.post('/api/share', upload.fields([{ name: 'image', maxCount: 1 }, { name: 'video', maxCount: 1 }, { name: 'audio', maxCount: 1 }, 
-  { name: 'pdf', maxCount: 1 }]), async (req, res) => {
+  app.post('/api/share', upload.fields([{ name: 'image', maxCount: 1 }, { name: 'video', maxCount: 1 }, { name: 'audio', maxCount: 1 }, { name: 'pdf', maxCount: 1 }]), async (req, res) => {
     const { text } = req.body;
-    const image = req.files?.image?.[0]?.filename;
-    const video = req.files?.video?.[0]?.filename;
-    const audio = req.files?.audio?.[0]?.filename; 
-  const pdf = req.files?.pdf?.[0]?.filename; 
+    const image = req.files?.image?.[0]?.filename ? `images/${req.files.image[0].filename}` : null;
+    const video = req.files?.video?.[0]?.filename ? `videos/${req.files.video[0].filename}` : null;
+    const audio = req.files?.audio?.[0]?.filename ? `audios/${req.files.audio[0].filename}` : null;
+    const pdf = req.files?.pdf?.[0]?.filename ? `pdfs/${req.files.pdf[0].filename}` : null;
 
   // Create a new instance of the Filter class
   const filter = new Filter();
